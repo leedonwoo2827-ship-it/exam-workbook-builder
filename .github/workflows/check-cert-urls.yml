@@ -1,0 +1,41 @@
+name: Catalog URL check
+
+on:
+  schedule:
+    # 매주 월요일 02:00 UTC (KST 11:00) — 한국 공식 사이트들 가용한 시간대
+    - cron: "0 2 * * 1"
+  workflow_dispatch:        # 수동 실행 허용
+  push:
+    paths:
+      - "docs/SUPPORTED_CERTS.md"
+      - "scripts/check-cert-urls.mjs"
+      - ".github/workflows/check-cert-urls.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run URL check
+        run: npm run check:catalog
+        continue-on-error: true
+        id: check
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cert-urls-report
+          path: docs/cert-urls-report.json
+          retention-days: 90
+
+      - name: Fail step if any URL is unreachable
+        if: steps.check.outcome == 'failure'
+        run: |
+          echo "::warning::카탈로그 URL 중 도달 실패가 있습니다. docs/cert-urls-report.json 아티팩트를 확인하세요."
+          exit 1

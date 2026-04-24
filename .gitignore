@@ -12,3 +12,6 @@ Thumbs.db
 
 # Obsidian dev: 플러그인이 임시로 참조하는 vault 테스트 데이터
 /test-vault/
+
+# 카탈로그 URL 검증 산출물 (CI artifact로만 보존)
+docs/cert-urls-report.json

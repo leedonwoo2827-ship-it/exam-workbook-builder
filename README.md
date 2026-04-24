@@ -219,6 +219,7 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 - [x] v0.4.0 — **M5 회차 export** (printable.md + answers_with_explanations.md, 외부 hwpx/pptx 변환 안내)
 - [x] v0.5.0 — **배치 OCR** (`01_원본/{sourceId}/` 또는 `pages/` 폴더 우클릭, 기존 raw 자동 스킵)
 - [x] v0.6.0 — **진단·검증 도구** (워크스페이스 진단 / subject.yaml 검증 / 회차 검증 리포트)
+- [x] v0.7.0 — **카탈로그 URL 자동 검증** (`npm run check:catalog`) + GitHub Actions 주간 워크플로
 - [ ] (옵션) Tesseract fallback — vision 신뢰도 < 임계 시 자동 전환
 - [ ] v0.5 — M4 신규 문제 생성 + n-gram 중복 검사
 - [ ] v0.6 — M5 회차 조립, hwpx/pptx 내보내기
