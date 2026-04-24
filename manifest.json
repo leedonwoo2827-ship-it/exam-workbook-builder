@@ -1,7 +1,7 @@
 {
   "id": "exam-workbook-builder",
   "name": "Exam Workbook Builder",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "1.5.0",
   "description": "로컬 Ollama로 자격증 교재 PDF에서 OCR·구조화·신규 문제 생성을 수행하는 저작권 안전 문제집 제작 플러그인. 자격증 비종속(SQLD/컴활/정보처리기사 등 모든 유형 지원).",
   "author": "leedonwoo",

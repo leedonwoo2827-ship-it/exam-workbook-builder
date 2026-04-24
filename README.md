@@ -51,6 +51,7 @@ npm run build
 | OCR 실행 (현재 페이지 이미지) | 활성 png 페이지 → Ollama vision → raw.md | `Ctrl+Shift+O` |
 | 구조화 실행 (현재 raw.md) | `.raw.md` → mistral → 표준 `Q###.md` (검증 포함) | `Ctrl+Shift+S` |
 | 개념 태깅 실행 (현재 Q.md) | `Q###.md` + `subject.yaml` → gemma2 → frontmatter `primary_concept`/`concepts` + 허브 노드 | `Ctrl+Shift+T` |
+| 회차 생성 (현재 워크스페이스) | `subject.yaml` 분포 + `00_참고자료/` 팩 → gemma2로 N문제 생성 + 5-gram 저작권 검사 | — |
 | Ollama 연결 확인 | `/api/tags` 확인, 설치 모델 목록 표시 | — |
 
 ## 탐색기 우클릭 메뉴
@@ -66,6 +67,7 @@ npm run build
 | `Q###.md` 우클릭 | **Exam Workbook: 이 문제 태깅** | gemma2로 개념 태그 부여 + 허브 노드 갱신 |
 | `03_structured/{sourceId}/` 폴더 우클릭 | **Exam Workbook: 이 source 일괄 태깅** | 폴더 내 모든 `Q###.md` 일괄 (이미 태깅된 건 스킵) |
 | cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 PDF 가져오기** | 파일 선택창으로 PDF 고르기 |
+| cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 회차 생성** | 회차 ID·문제수·임계값 모달 |
 
 cert 루트 판별은 해당 폴더 안에 `00_시험개요.md` / `subject.yaml` / `01_원본` / `05_rounds` 중 하나가 있는지로 자동 추정합니다.
 
@@ -141,7 +143,27 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 
 폴더 일괄: `03_structured/{sourceId}/`를 우클릭하면 폴더 내 모든 `Q###.md`를 일괄 태깅합니다 (이미 `primary_concept` 있는 파일은 스킵).
 
-### 6. Ollama 연결 확인
+### 6. 회차 생성 (M4)
+**선행 조건**:
+1. `subject.yaml`이 작성되어 있고 `subjects[].topics[].concepts`에 충분한 개념이 있음
+2. `00_참고자료/` 아래에 카테고리별 R-*.md 노트가 일부라도 있음 (없어도 동작은 하나 결과 품질 ↓)
+3. 원본 기출이 `03_structured/`에 쌓여 있으면 5-gram 저작권 검사가 의미를 가짐
+
+명령어 팔레트 → **회차 생성** 또는 cert 루트 폴더 우클릭 → **이 워크스페이스에 회차 생성**.
+
+모달 입력:
+- 회차 ID (예: `2026-1회`) — 시드는 `{cert}_{roundId}`로 결정 → **재실행 시 같은 회차 구성 재현**
+- 총 문제 수 (subject.yaml의 `round_distribution` 또는 과목 weight 비례로 자동 분배)
+- 5-gram 겹침 임계 (기본 0.15) / 연속 일치 단어 한도 (기본 6) / 슬롯당 재시도 (기본 2)
+
+생성 흐름:
+1. 슬롯 플랜 — 과목·토픽·primary_concept·난이도 결정 (`stratified_sampling.max_tag_repeat` 적용)
+2. 슬롯마다 관련 참고자료 상위 3건을 `generation_weight` 기준 선별 (`copyright_safe=false`는 본문 제외)
+3. `gemma2:9b`에 [참고자료 팩 + 직전 5문제 발문 5-gram] 주입해 새 문제 생성
+4. 검증(선택지 4개·정답·해설 길이) + 5-gram 겹침·연속 단어 검사 → 통과 시 저장, 실패 시 temperature↑로 재시도
+5. 결과: `05_rounds/{roundId}/Q01.md ... Q{N}.md`, `index.md`, `answers.md`
+
+### 7. Ollama 연결 확인
 **Ollama 연결 확인** 명령으로 `GET /api/tags`를 호출해 설치된 모델 목록을 확인할 수 있습니다.
 
 ## 설정
@@ -171,7 +193,9 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 - [x] v0.1.1 — 탐색기 우클릭 메뉴 (PDF/PNG/cert 폴더), 활성 PDF 명령어
 - [x] v0.1.2 — **M2 구조화** (mistral:7b) + 자동 검증 + raw/source 일괄 우클릭
 - [x] v0.2.0 — **M3 개념 태깅** (gemma2:9b) + 허브 노드 자동 생성 + candidate 분리 + Q/source 일괄
-- [ ] v0.2.1 — 배치 OCR (디렉토리 단위), Tesseract fallback
+- [x] v0.3.0 — **M4 신규 문제 생성** (gemma2:9b) + 분포 기반 슬롯 플랜 + 참고자료 팩 + 5-gram 저작권 검사
+- [ ] v0.4.0 — M5 회차 인쇄용 export (printable.md / answers.md, hwpx/pptx 외부 변환)
+- [ ] v0.5.0 — 배치 OCR (디렉토리 단위), Tesseract fallback
 - [ ] v0.5 — M4 신규 문제 생성 + n-gram 중복 검사
 - [ ] v0.6 — M5 회차 조립, hwpx/pptx 내보내기
 
@@ -213,16 +237,22 @@ exam-workbook-builder/
     │   ├── structureRaw.ts    # M2: 단일 raw → Q###.md
     │   ├── structureSource.ts # M2: source 폴더 일괄
     │   ├── tagQuestion.ts     # M3: 단일 Q 개념 태깅
-    │   └── tagSource.ts       # M3: 03_structured/{sourceId} 일괄
+    │   ├── tagSource.ts       # M3: 03_structured/{sourceId} 일괄
+    │   └── generateRound.ts   # M4: 회차 생성 (모달 + 파이프라인)
     ├── structure/
     │   ├── parseRaw.ts        # raw.md frontmatter/본문 파싱
     │   ├── parseModel.ts      # mistral 응답 → ParsedQuestion[]
     │   └── validate.ts        # 선택지/정답/해설 검증
-    └── concepts/
-        ├── parseSubjectYaml.ts  # subject.yaml → SubjectConfig
-        ├── parseTagResponse.ts  # gemma2 JSON → concepts/primary
-        ├── frontmatter.ts       # frontmatter split/merge/join
-        └── conceptHub.ts        # 04_concepts/{개념}.md 허브 upsert
+    ├── concepts/
+    │   ├── parseSubjectYaml.ts  # subject.yaml → SubjectConfig
+    │   ├── parseTagResponse.ts  # gemma2 JSON → concepts/primary
+    │   ├── frontmatter.ts       # frontmatter split/merge/join
+    │   └── conceptHub.ts        # 04_concepts/{개념}.md 허브 upsert
+    └── round/
+        ├── seedRandom.ts        # 결정적 시드 → mulberry32 PRNG
+        ├── sampler.ts           # 분포 기반 슬롯 플랜 (stratified)
+        ├── referencePicker.ts   # 00_참고자료 로딩·팩 선별
+        └── copyrightCheck.ts    # 5-gram 겹침 + 연속 단어 일치
 ```
 
 ## 기여

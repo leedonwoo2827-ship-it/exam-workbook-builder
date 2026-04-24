@@ -15,6 +15,11 @@ import { structureRaw } from "./commands/structureRaw";
 import { isRawSourceFolder, structureSource } from "./commands/structureSource";
 import { isStructuredSourceFolder, tagQuestion } from "./commands/tagQuestion";
 import { tagSource } from "./commands/tagSource";
+import {
+  generateRound,
+  GenerateRoundModal,
+  RoundFormInput,
+} from "./commands/generateRound";
 import { listModels } from "./ollama";
 import { notify } from "./utils";
 
@@ -81,6 +86,12 @@ export default class ExamWorkbookPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "generate-round",
+      name: "회차 생성 (현재 워크스페이스)",
+      callback: () => this.openGenerateRoundModal(),
+    });
+
+    this.addCommand({
       id: "check-ollama",
       name: "Ollama 연결 확인",
       callback: () => this.runCheckOllama(),
@@ -137,6 +148,12 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setTitle("Exam Workbook: 이 워크스페이스에 PDF 가져오기")
             .setIcon("file-plus")
             .onClick(() => void this.runImportPdfFor(file.path))
+        );
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 워크스페이스에 회차 생성")
+            .setIcon("dice")
+            .onClick(() => this.openGenerateRoundModal(file.path, file.name))
         );
       }
       if (isRawSourceFolder(file)) {
@@ -302,6 +319,64 @@ export default class ExamWorkbookPlugin extends Plugin {
     } catch (e) {
       notice.hide();
       notify(`일괄 구조화 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private openGenerateRoundModal(certRootHint?: string, certCodeHint?: string): void {
+    const certRoot = certRootHint ?? this.inferCertRoot(this.app.workspace.getActiveFile()?.path);
+    if (!certRoot) {
+      notify(
+        "cert 워크스페이스 컨텍스트를 찾지 못했습니다. cert 폴더 안에서 실행하거나 cert 루트를 우클릭하세요.",
+        8000
+      );
+      return;
+    }
+    const certCode = certCodeHint ?? certRoot.split("/").slice(-1)[0];
+    const defaults: RoundFormInput = {
+      certRoot,
+      certCode,
+      roundId: `${new Date().getFullYear()}-1회`,
+      totalQuestions: 50,
+      similarityThreshold: 0.15,
+      maxConsecutiveRun: 6,
+      retryPerSlot: 2,
+    };
+    new GenerateRoundModal(this.app, defaults, (input) => {
+      void this.runGenerateRound(input);
+    }).open();
+  }
+
+  private async runGenerateRound(input: RoundFormInput): Promise<void> {
+    const notice = new Notice(`회차 생성: ${input.roundId} (0/${input.totalQuestions})`, 0);
+    try {
+      const r = await generateRound(this.app, {
+        certRoot: input.certRoot,
+        certCode: input.certCode,
+        roundId: input.roundId,
+        totalQuestions: input.totalQuestions,
+        ollamaUrl: this.settings.ollamaUrl,
+        reasoningModel: this.settings.reasoningModel,
+        timeoutMs: this.settings.requestTimeoutMs,
+        similarityThreshold: input.similarityThreshold,
+        maxConsecutiveRun: input.maxConsecutiveRun,
+        retryPerSlot: input.retryPerSlot,
+        onProgress: (done, total, msg) => {
+          notice.setMessage(`회차 ${input.roundId}: ${msg} (${done}/${total})`);
+        },
+      });
+      notice.hide();
+      if (r.failedSlots.length) {
+        // eslint-disable-next-line no-console
+        console.warn("[Exam Workbook] 회차 생성 실패 슬롯:", r.failedSlots);
+      }
+      const failNote = r.failedSlots.length ? ` · 실패 ${r.failedSlots.length}슬롯 (콘솔)` : "";
+      notify(
+        `회차 생성 완료 · ${r.written}/${r.totalSlots} 작성 · 재시도 ${r.retriedSlots}회${failNote}\n→ ${r.roundDir}`,
+        12000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`회차 생성 실패: ${(e as Error).message}`, 8000);
     }
   }
 
