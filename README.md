@@ -39,6 +39,30 @@ npm run build
 `<vault>/.obsidian/plugins/exam-workbook-builder/`에 복사한 뒤
 설정 → 커뮤니티 플러그인에서 활성화.
 
+## 명령어
+
+`Ctrl+P` → `exam` 검색:
+
+| 명령어 | 설명 | 추천 단축키 |
+|--------|------|-------------|
+| 자격증 워크스페이스 초기화 | cert 폴더 트리 + 시험개요·참고자료·subject.yaml 생성 | — |
+| PDF 가져오기 (현재 활성 PDF) | vault 내부의 활성 PDF를 페이지 분할 | `Ctrl+Shift+I` |
+| PDF 가져오기 (현재 워크스페이스에 페이지 분할) | 시스템 파일 선택창에서 PDF 고르기 | — |
+| OCR 실행 (현재 페이지 이미지) | 활성 png 페이지 → Ollama vision → raw.md | `Ctrl+Shift+O` |
+| Ollama 연결 확인 | `/api/tags` 확인, 설치 모델 목록 표시 | — |
+
+## 탐색기 우클릭 메뉴
+
+단일 파일·폴더 단위로 파이프라인을 돌릴 때 유용합니다 (문제가 1개씩 처리되는 흐름).
+
+| 대상 | 메뉴 | 동작 |
+|------|------|------|
+| `.pdf` 파일 우클릭 | **Exam Workbook: PDF 가져오기** | 해당 PDF를 속한 cert 워크스페이스에 페이지 분할 |
+| `.png` (pages/ 하위) 우클릭 | **Exam Workbook: 이 페이지 OCR** | 페이지 이미지 하나만 OCR 실행 |
+| cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 PDF 가져오기** | 파일 선택창으로 PDF 고르기 |
+
+cert 루트 판별은 해당 폴더 안에 `00_시험개요.md` / `subject.yaml` / `01_원본` / `05_rounds` 중 하나가 있는지로 자동 추정합니다.
+
 ## 사용법
 
 ### 1. 자격증 워크스페이스 초기화
@@ -116,6 +140,7 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 ## 로드맵
 
 - [x] v0.1 — 워크스페이스 초기화, PDF import(페이지 분할), 페이지별 OCR
+- [x] v0.1.1 — 탐색기 우클릭 메뉴 (PDF/PNG/cert 폴더), 활성 PDF 명령어
 - [ ] v0.2 — 배치 OCR (디렉토리 단위), Tesseract fallback
 - [ ] v0.3 — M2 구조화 (mistral:7b) + 자동 검증
 - [ ] v0.4 — M3 개념 태깅 + 개념 허브 자동 생성

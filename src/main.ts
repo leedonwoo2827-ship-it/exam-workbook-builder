@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Menu, Notice, Plugin, TAbstractFile, TFile, TFolder } from "obsidian";
 import {
   DEFAULT_SETTINGS,
   ExamWorkbookSettings,
@@ -9,7 +9,7 @@ import {
   InitWorkspaceModal,
   initWorkspace,
 } from "./commands/initWorkspace";
-import { importPdf, pickPdfFile } from "./commands/importPdf";
+import { importPdf, pickPdfFile, readVaultPdf } from "./commands/importPdf";
 import { ocrPage } from "./commands/ocrPage";
 import { listModels } from "./ollama";
 import { notify } from "./utils";
@@ -33,6 +33,17 @@ export default class ExamWorkbookPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "import-active-pdf",
+      name: "PDF 가져오기 (현재 활성 PDF)",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        const ok = !!file && file.extension.toLowerCase() === "pdf";
+        if (!checking && ok && file) void this.runImportVaultPdf(file);
+        return ok;
+      },
+    });
+
+    this.addCommand({
       id: "ocr-current-page",
       name: "OCR 실행 (현재 페이지 이미지)",
       checkCallback: (checking) => {
@@ -50,6 +61,52 @@ export default class ExamWorkbookPlugin extends Plugin {
     });
 
     this.addSettingTab(new ExamWorkbookSettingTab(this.app, this));
+
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu: Menu, file: TAbstractFile) => {
+        this.decorateFileMenu(menu, file);
+      })
+    );
+  }
+
+  private decorateFileMenu(menu: Menu, file: TAbstractFile): void {
+    if (file instanceof TFile) {
+      const ext = file.extension.toLowerCase();
+      if (ext === "pdf") {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: PDF 가져오기")
+            .setIcon("file-input")
+            .onClick(() => void this.runImportVaultPdf(file))
+        );
+      } else if (ext === "png" && /\/pages\//.test(file.path)) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 페이지 OCR")
+            .setIcon("scan")
+            .onClick(() => void this.runOcr(file))
+        );
+      }
+      return;
+    }
+
+    if (file instanceof TFolder) {
+      if (this.isCertRoot(file)) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 워크스페이스에 PDF 가져오기")
+            .setIcon("file-plus")
+            .onClick(() => void this.runImportPdfFor(file.path))
+        );
+      }
+    }
+  }
+
+  private isCertRoot(folder: TFolder): boolean {
+    const probes = ["00_시험개요.md", "subject.yaml", "01_원본", "05_rounds"];
+    return probes.some(
+      (p) => this.app.vault.getAbstractFileByPath(folder.path + "/" + p) !== null
+    );
   }
 
   onunload(): void {
@@ -93,30 +150,49 @@ export default class ExamWorkbookPlugin extends Plugin {
       );
       return;
     }
-    const certCode = certRoot.split("/").slice(-1)[0];
-
     const file = await pickPdfFile();
     if (!file) return;
     const buf = await file.arrayBuffer();
+    await this.doImport(certRoot, buf, file.name);
+  }
 
-    const notice = new Notice(`PDF 임포트 중: ${file.name} (0/?)`, 0);
+  private async runImportPdfFor(certRoot: string): Promise<void> {
+    const file = await pickPdfFile();
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    await this.doImport(certRoot, buf, file.name);
+  }
+
+  private async runImportVaultPdf(file: TFile): Promise<void> {
+    const certRoot = this.inferCertRoot(file.path);
+    if (!certRoot) {
+      notify(
+        "이 PDF가 속한 cert 워크스페이스를 찾지 못했습니다. cert 폴더 내부에서 실행하세요.",
+        8000
+      );
+      return;
+    }
+    const buf = await readVaultPdf(this.app, file);
+    await this.doImport(certRoot, buf, file.name);
+  }
+
+  private async doImport(certRoot: string, buf: ArrayBuffer, pdfFileName: string): Promise<void> {
+    const certCode = certRoot.split("/").slice(-1)[0];
+    const notice = new Notice(`PDF 임포트 중: ${pdfFileName} (0/?)`, 0);
     try {
       const res = await importPdf(this.app, {
         pdfBytes: buf,
-        pdfFileName: file.name,
+        pdfFileName,
         certRoot,
         certCode,
         renderScale: this.settings.pdfRenderScale,
         maxPages: this.settings.maxPagesPerImport,
         onProgress: (done, total) => {
-          notice.setMessage(`PDF 임포트 중: ${file.name} (${done}/${total})`);
+          notice.setMessage(`PDF 임포트 중: ${pdfFileName} (${done}/${total})`);
         },
       });
       notice.hide();
-      notify(
-        `완료: ${res.rendered}/${res.pageCount}쪽 → ${res.sourceDir}`,
-        6000
-      );
+      notify(`완료: ${res.rendered}/${res.pageCount}쪽 → ${res.sourceDir}`, 6000);
     } catch (e) {
       notice.hide();
       notify(`임포트 실패: ${(e as Error).message}`, 8000);

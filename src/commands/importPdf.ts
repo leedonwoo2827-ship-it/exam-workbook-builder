@@ -1,4 +1,4 @@
-import { App, Notice, TFile, TFolder } from "obsidian";
+import { App, TFile, TFolder } from "obsidian";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { DEFAULT_SUBPATHS } from "../types";
@@ -106,6 +106,13 @@ async function ensureFolder(app: App, path: string): Promise<void> {
   if (existing instanceof TFolder) return;
   if (existing) throw new Error(`경로 충돌: ${path}`);
   await app.vault.createFolder(path);
+}
+
+export async function readVaultPdf(app: App, file: TFile): Promise<ArrayBuffer> {
+  if (file.extension.toLowerCase() !== "pdf") {
+    throw new Error("PDF 파일이 아닙니다.");
+  }
+  return await app.vault.readBinary(file);
 }
 
 export async function pickPdfFile(): Promise<File | null> {
