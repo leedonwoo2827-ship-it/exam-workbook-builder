@@ -20,6 +20,7 @@ import {
   GenerateRoundModal,
   RoundFormInput,
 } from "./commands/generateRound";
+import { exportRound, isRoundFolder } from "./commands/exportRound";
 import { listModels } from "./ollama";
 import { notify } from "./utils";
 
@@ -89,6 +90,18 @@ export default class ExamWorkbookPlugin extends Plugin {
       id: "generate-round",
       name: "회차 생성 (현재 워크스페이스)",
       callback: () => this.openGenerateRoundModal(),
+    });
+
+    this.addCommand({
+      id: "export-active-round",
+      name: "회차 export (활성 파일이 속한 회차)",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        const folder = this.findRoundFolderForFile(file?.path);
+        const ok = !!folder;
+        if (!checking && folder) void this.runExportRound(folder);
+        return ok;
+      },
     });
 
     this.addCommand({
@@ -172,7 +185,25 @@ export default class ExamWorkbookPlugin extends Plugin {
             .onClick(() => void this.runTagSource(file))
         );
       }
+      if (isRoundFolder(file)) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 회차 export")
+            .setIcon("printer")
+            .onClick(() => void this.runExportRound(file))
+        );
+      }
     }
+  }
+
+  private findRoundFolderForFile(path?: string): TFolder | null {
+    if (!path) return null;
+    const parts = path.split("/");
+    const idx = parts.findIndex((p) => p === "05_rounds");
+    if (idx === -1 || idx + 1 >= parts.length) return null;
+    const folderPath = parts.slice(0, idx + 2).join("/");
+    const f = this.app.vault.getAbstractFileByPath(folderPath);
+    return f instanceof TFolder ? f : null;
   }
 
   private isCertRoot(folder: TFolder): boolean {
@@ -423,6 +454,25 @@ export default class ExamWorkbookPlugin extends Plugin {
     } catch (e) {
       notice.hide();
       notify(`일괄 태깅 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runExportRound(folder: TFolder): Promise<void> {
+    const notice = new Notice(`회차 export: ${folder.path}`, 0);
+    try {
+      const r = await exportRound(this.app, {
+        roundFolder: folder,
+        answerStyle: "tail",
+      });
+      notice.hide();
+      const tail = r.answersPath ? ` + answers_with_explanations.md` : "";
+      notify(
+        `Export 완료 · ${r.questionCount}문항 → ${r.outputDir}\nprintable.md${tail}`,
+        9000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`Export 실패: ${(e as Error).message}`, 8000);
     }
   }
 

@@ -52,6 +52,7 @@ npm run build
 | 구조화 실행 (현재 raw.md) | `.raw.md` → mistral → 표준 `Q###.md` (검증 포함) | `Ctrl+Shift+S` |
 | 개념 태깅 실행 (현재 Q.md) | `Q###.md` + `subject.yaml` → gemma2 → frontmatter `primary_concept`/`concepts` + 허브 노드 | `Ctrl+Shift+T` |
 | 회차 생성 (현재 워크스페이스) | `subject.yaml` 분포 + `00_참고자료/` 팩 → gemma2로 N문제 생성 + 5-gram 저작권 검사 | — |
+| 회차 export (활성 파일이 속한 회차) | `05_rounds/{roundId}/` → `06_output/{roundId}/printable.md` + 답안지 | `Ctrl+Shift+E` |
 | Ollama 연결 확인 | `/api/tags` 확인, 설치 모델 목록 표시 | — |
 
 ## 탐색기 우클릭 메뉴
@@ -68,6 +69,7 @@ npm run build
 | `03_structured/{sourceId}/` 폴더 우클릭 | **Exam Workbook: 이 source 일괄 태깅** | 폴더 내 모든 `Q###.md` 일괄 (이미 태깅된 건 스킵) |
 | cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 PDF 가져오기** | 파일 선택창으로 PDF 고르기 |
 | cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 회차 생성** | 회차 ID·문제수·임계값 모달 |
+| `05_rounds/{roundId}/` 폴더 우클릭 | **Exam Workbook: 이 회차 export** | 인쇄용 통합 markdown + 답안지 생성 |
 
 cert 루트 판별은 해당 폴더 안에 `00_시험개요.md` / `subject.yaml` / `01_원본` / `05_rounds` 중 하나가 있는지로 자동 추정합니다.
 
@@ -163,7 +165,19 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 4. 검증(선택지 4개·정답·해설 길이) + 5-gram 겹침·연속 단어 검사 → 통과 시 저장, 실패 시 temperature↑로 재시도
 5. 결과: `05_rounds/{roundId}/Q01.md ... Q{N}.md`, `index.md`, `answers.md`
 
-### 7. Ollama 연결 확인
+### 7. 회차 export (M5)
+회차 폴더(`05_rounds/{roundId}/`)를 우클릭하거나, 해당 폴더 내 어떤 파일이라도 활성으로 두고 **회차 export** 명령 실행.
+
+산출:
+- `06_output/{roundId}/printable.md` — 인쇄용 통합 markdown (각 문제 발문 + 선택지 ①②③④, 마지막에 답안표)
+- `06_output/{roundId}/answers_with_explanations.md` — 정답·해설본 (학습용)
+
+이 markdown들을 외부 도구로 변환:
+- **HWPX**: `d:\mcp\hwpx_writer` (기존 사용자 도구) — 6단계 마크다운 헤딩이 한글 레벨 1~6에 매핑
+- **PPTX**: `d:\mcp\pptx_writer` — 슬라이드 강의용
+- **PDF**: Obsidian 자체 기능 → File → Export to PDF
+
+### 8. Ollama 연결 확인
 **Ollama 연결 확인** 명령으로 `GET /api/tags`를 호출해 설치된 모델 목록을 확인할 수 있습니다.
 
 ## 설정
@@ -194,7 +208,7 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 - [x] v0.1.2 — **M2 구조화** (mistral:7b) + 자동 검증 + raw/source 일괄 우클릭
 - [x] v0.2.0 — **M3 개념 태깅** (gemma2:9b) + 허브 노드 자동 생성 + candidate 분리 + Q/source 일괄
 - [x] v0.3.0 — **M4 신규 문제 생성** (gemma2:9b) + 분포 기반 슬롯 플랜 + 참고자료 팩 + 5-gram 저작권 검사
-- [ ] v0.4.0 — M5 회차 인쇄용 export (printable.md / answers.md, hwpx/pptx 외부 변환)
+- [x] v0.4.0 — **M5 회차 export** (printable.md + answers_with_explanations.md, 외부 hwpx/pptx 변환 안내)
 - [ ] v0.5.0 — 배치 OCR (디렉토리 단위), Tesseract fallback
 - [ ] v0.5 — M4 신규 문제 생성 + n-gram 중복 검사
 - [ ] v0.6 — M5 회차 조립, hwpx/pptx 내보내기
@@ -238,7 +252,8 @@ exam-workbook-builder/
     │   ├── structureSource.ts # M2: source 폴더 일괄
     │   ├── tagQuestion.ts     # M3: 단일 Q 개념 태깅
     │   ├── tagSource.ts       # M3: 03_structured/{sourceId} 일괄
-    │   └── generateRound.ts   # M4: 회차 생성 (모달 + 파이프라인)
+    │   ├── generateRound.ts   # M4: 회차 생성 (모달 + 파이프라인)
+    │   └── exportRound.ts     # M5: 인쇄용 markdown export
     ├── structure/
     │   ├── parseRaw.ts        # raw.md frontmatter/본문 파싱
     │   ├── parseModel.ts      # mistral 응답 → ParsedQuestion[]
