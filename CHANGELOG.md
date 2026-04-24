@@ -3,6 +3,16 @@
 이 프로젝트의 모든 주요 변경 사항을 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 기반.
 
+## [1.0.1] — 2026-04-25
+
+### 변경
+- `scripts/check-cert-urls.mjs` 견고성 보강:
+  - User-Agent를 표준 Chrome으로 변경 (정부·기관 사이트의 봇 차단 회피)
+  - Accept-Language / Accept-Encoding 헤더 추가
+  - GET → HEAD 순으로 시도 (HEAD를 막는 사이트 대응)
+  - 타임아웃 12s → 15s
+  - `EXPECTED_FAILS` 화이트리스트 도입 — CI에서 일관되게 차단되는 URL은 warning만 발생, exit 0 유지
+
 ## [1.0.0] — 2026-04-25
 
 첫 안정 릴리즈. M1~M5 전 파이프라인 동작 + 진단·검증 도구 + 카탈로그 자동 검증.
