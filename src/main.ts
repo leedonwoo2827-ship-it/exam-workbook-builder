@@ -1,0 +1,183 @@
+import { Notice, Plugin, TFile } from "obsidian";
+import {
+  DEFAULT_SETTINGS,
+  ExamWorkbookSettings,
+  ExamWorkbookSettingTab,
+} from "./settings";
+import {
+  InitWorkspaceInput,
+  InitWorkspaceModal,
+  initWorkspace,
+} from "./commands/initWorkspace";
+import { importPdf, pickPdfFile } from "./commands/importPdf";
+import { ocrPage } from "./commands/ocrPage";
+import { listModels } from "./ollama";
+import { notify } from "./utils";
+
+export default class ExamWorkbookPlugin extends Plugin {
+  settings: ExamWorkbookSettings = DEFAULT_SETTINGS;
+
+  async onload(): Promise<void> {
+    await this.loadSettings();
+
+    this.addCommand({
+      id: "init-exam-workspace",
+      name: "자격증 워크스페이스 초기화",
+      callback: () => this.openInitModal(),
+    });
+
+    this.addCommand({
+      id: "import-pdf",
+      name: "PDF 가져오기 (현재 워크스페이스에 페이지 분할)",
+      callback: () => this.runImportPdf(),
+    });
+
+    this.addCommand({
+      id: "ocr-current-page",
+      name: "OCR 실행 (현재 페이지 이미지)",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        const ok = !!file && file.extension.toLowerCase() === "png";
+        if (!checking && ok && file) void this.runOcr(file);
+        return ok;
+      },
+    });
+
+    this.addCommand({
+      id: "check-ollama",
+      name: "Ollama 연결 확인",
+      callback: () => this.runCheckOllama(),
+    });
+
+    this.addSettingTab(new ExamWorkbookSettingTab(this.app, this));
+  }
+
+  onunload(): void {
+    /* no-op */
+  }
+
+  async loadSettings(): Promise<void> {
+    const data = (await this.loadData()) as { settings?: Partial<ExamWorkbookSettings> } | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings ?? {});
+  }
+
+  async saveSettings(): Promise<void> {
+    await this.saveData({ settings: this.settings });
+  }
+
+  private openInitModal(): void {
+    const defaults: InitWorkspaceInput = {
+      root: this.settings.defaultWorkspaceRoot,
+      certCode: "sqld",
+      certNameKor: "",
+      authority: "",
+      homepage: "",
+    };
+    new InitWorkspaceModal(this.app, defaults, async (input) => {
+      try {
+        const created = await initWorkspace(this.app, input);
+        notify(`워크스페이스 생성 완료: ${created}`);
+      } catch (e) {
+        notify(`초기화 실패: ${(e as Error).message}`, 8000);
+      }
+    }).open();
+  }
+
+  private async runImportPdf(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    const certRoot = this.inferCertRoot(activeFile?.path);
+    if (!certRoot) {
+      notify(
+        "cert 워크스페이스 컨텍스트를 찾지 못했습니다. cert 폴더 내부 파일을 연 상태에서 실행하거나, 먼저 '자격증 워크스페이스 초기화'를 실행하세요.",
+        8000
+      );
+      return;
+    }
+    const certCode = certRoot.split("/").slice(-1)[0];
+
+    const file = await pickPdfFile();
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+
+    const notice = new Notice(`PDF 임포트 중: ${file.name} (0/?)`, 0);
+    try {
+      const res = await importPdf(this.app, {
+        pdfBytes: buf,
+        pdfFileName: file.name,
+        certRoot,
+        certCode,
+        renderScale: this.settings.pdfRenderScale,
+        maxPages: this.settings.maxPagesPerImport,
+        onProgress: (done, total) => {
+          notice.setMessage(`PDF 임포트 중: ${file.name} (${done}/${total})`);
+        },
+      });
+      notice.hide();
+      notify(
+        `완료: ${res.rendered}/${res.pageCount}쪽 → ${res.sourceDir}`,
+        6000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`임포트 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runOcr(file: TFile): Promise<void> {
+    const notice = new Notice(`OCR 실행 중: ${file.name}`, 0);
+    try {
+      const res = await ocrPage(this.app, {
+        imageFile: file,
+        ollamaUrl: this.settings.ollamaUrl,
+        visionModel: this.settings.visionModel,
+        timeoutMs: this.settings.requestTimeoutMs,
+        confidenceThreshold: this.settings.ocrConfidenceThreshold,
+      });
+      notice.hide();
+      notify(`OCR 완료 → ${res.outputPath}`, 6000);
+    } catch (e) {
+      notice.hide();
+      notify(`OCR 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runCheckOllama(): Promise<void> {
+    try {
+      const models = await listModels(this.settings.ollamaUrl);
+      notify(`Ollama OK · 모델 ${models.length}개: ${models.slice(0, 6).join(", ")}${models.length > 6 ? " ..." : ""}`, 8000);
+    } catch (e) {
+      notify(`Ollama 연결 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  /**
+   * 활성 파일 경로에서 cert 루트(= workspace 초기화 시 만든 폴더)를 추정.
+   * 규칙: 경로 세그먼트 중 다음 중 하나의 서브폴더를 포함하는 첫 번째 조상을 cert 루트로 간주.
+   *   00_시험개요.md / 00_참고자료 / 01_원본 / 02_raw / 03_structured / 04_concepts / 05_rounds / 06_output / subject.yaml
+   */
+  private inferCertRoot(activePath?: string): string | null {
+    if (!activePath) return null;
+    const markers = [
+      "00_시험개요.md",
+      "00_참고자료",
+      "01_원본",
+      "02_raw",
+      "03_structured",
+      "04_concepts",
+      "05_rounds",
+      "06_output",
+      "subject.yaml",
+    ];
+    const parts = activePath.split("/");
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const candidate = parts.slice(0, i + 1).join("/");
+      for (const m of markers) {
+        const probe = candidate + "/" + m;
+        if (this.app.vault.getAbstractFileByPath(probe)) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+}

@@ -1,0 +1,64 @@
+/* Exam Workbook Builder — minimal styles */
+
+.ewb-modal {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-normal);
+  max-width: 640px;
+}
+
+.ewb-modal h2 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+}
+
+.ewb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ewb-row label {
+  min-width: 140px;
+  color: var(--text-muted);
+}
+
+.ewb-input,
+.ewb-select {
+  flex: 1;
+  padding: 4px 6px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+}
+
+.ewb-btn-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ewb-status {
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: var(--background-secondary);
+  padding: 8px;
+  border-radius: 4px;
+  max-height: 240px;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.ewb-status--err {
+  color: var(--text-error);
+}
+
+.ewb-status--ok {
+  color: var(--text-success);
+}

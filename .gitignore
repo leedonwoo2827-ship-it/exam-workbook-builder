@@ -1,0 +1,14 @@
+node_modules/
+main.js
+main.js.map
+*.zip
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+.env
+*.log
+
+# Obsidian dev: 플러그인이 임시로 참조하는 vault 테스트 데이터
+/test-vault/
