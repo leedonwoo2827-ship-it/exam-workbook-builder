@@ -22,6 +22,9 @@ import {
 } from "./commands/generateRound";
 import { exportRound, isRoundFolder } from "./commands/exportRound";
 import { isOcrTargetFolder, isUnderOriginal, ocrFolder } from "./commands/ocrFolder";
+import { buildWorkspaceStatus } from "./audit/workspaceStatus";
+import { validateSubjectYaml } from "./audit/validateSubject";
+import { auditRound } from "./audit/auditRound";
 import { listModels } from "./ollama";
 import { notify } from "./utils";
 
@@ -106,6 +109,30 @@ export default class ExamWorkbookPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "workspace-status",
+      name: "워크스페이스 진단 (현재 cert)",
+      callback: () => this.runWorkspaceStatus(),
+    });
+
+    this.addCommand({
+      id: "validate-subject-yaml",
+      name: "subject.yaml 검증",
+      callback: () => this.runValidateSubject(),
+    });
+
+    this.addCommand({
+      id: "audit-active-round",
+      name: "회차 검증 리포트 (활성 파일이 속한 회차)",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        const folder = this.findRoundFolderForFile(file?.path);
+        const ok = !!folder;
+        if (!checking && folder) void this.runAuditRound(folder);
+        return ok;
+      },
+    });
+
+    this.addCommand({
       id: "check-ollama",
       name: "Ollama 연결 확인",
       callback: () => this.runCheckOllama(),
@@ -151,6 +178,13 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setIcon("tag")
             .onClick(() => void this.runTagQuestion(file))
         );
+      } else if (file.name === "subject.yaml") {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 subject.yaml 검증")
+            .setIcon("check-circle")
+            .onClick(() => void this.runValidateSubjectFor(this.parentPath(file.path)))
+        );
       }
       return;
     }
@@ -168,6 +202,12 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setTitle("Exam Workbook: 이 워크스페이스에 회차 생성")
             .setIcon("dice")
             .onClick(() => this.openGenerateRoundModal(file.path, file.name))
+        );
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 워크스페이스 진단")
+            .setIcon("activity")
+            .onClick(() => void this.runWorkspaceStatusFor(file.path))
         );
       }
       if (isRawSourceFolder(file)) {
@@ -201,8 +241,18 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setIcon("printer")
             .onClick(() => void this.runExportRound(file))
         );
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 회차 검증 리포트")
+            .setIcon("clipboard-check")
+            .onClick(() => void this.runAuditRound(file))
+        );
       }
     }
+  }
+
+  private parentPath(p: string): string {
+    return p.split("/").slice(0, -1).join("/");
   }
 
   private findRoundFolderForFile(path?: string): TFolder | null {
@@ -482,6 +532,73 @@ export default class ExamWorkbookPlugin extends Plugin {
     } catch (e) {
       notice.hide();
       notify(`Export 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runWorkspaceStatus(): Promise<void> {
+    const certRoot = this.inferCertRoot(this.app.workspace.getActiveFile()?.path);
+    if (!certRoot) {
+      notify("cert 워크스페이스를 찾지 못했습니다. cert 폴더 내부에서 실행하세요.", 8000);
+      return;
+    }
+    await this.runWorkspaceStatusFor(certRoot);
+  }
+
+  private async runWorkspaceStatusFor(certRoot: string): Promise<void> {
+    const notice = new Notice(`워크스페이스 진단 중: ${certRoot}`, 0);
+    try {
+      const s = await buildWorkspaceStatus(this.app, certRoot);
+      notice.hide();
+      notify(
+        `진단 완료 · raw ${s.rawMd} / Q ${s.structuredQ} (태깅 ${s.taggedQ}) · 회차 ${s.rounds}\n→ ${s.reportPath}`,
+        12000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`진단 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runValidateSubject(): Promise<void> {
+    const certRoot = this.inferCertRoot(this.app.workspace.getActiveFile()?.path);
+    if (!certRoot) {
+      notify("cert 워크스페이스를 찾지 못했습니다.", 8000);
+      return;
+    }
+    await this.runValidateSubjectFor(certRoot);
+  }
+
+  private async runValidateSubjectFor(certRoot: string): Promise<void> {
+    const notice = new Notice(`subject.yaml 검증 중: ${certRoot}`, 0);
+    try {
+      const r = await validateSubjectYaml(this.app, certRoot);
+      notice.hide();
+      const errs = r.issues.filter((i) => i.level === "error").length;
+      const warns = r.issues.filter((i) => i.level === "warning").length;
+      notify(
+        `검증 완료 · concepts ${r.totalConcepts} · 오류 ${errs} · 경고 ${warns}\n→ ${r.reportPath}`,
+        10000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`검증 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runAuditRound(folder: TFolder): Promise<void> {
+    const notice = new Notice(`회차 감사: ${folder.path}`, 0);
+    try {
+      const r = await auditRound(this.app, folder);
+      notice.hide();
+      const errs = r.issues.filter((i) => i.level === "error").length;
+      const warns = r.issues.filter((i) => i.level === "warning").length;
+      notify(
+        `감사 완료 · ${r.totalQuestions}문항 · 오류 ${errs} · 경고 ${warns}\n→ ${r.reportPath}`,
+        10000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`감사 실패: ${(e as Error).message}`, 8000);
     }
   }
 

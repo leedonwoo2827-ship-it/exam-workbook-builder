@@ -54,6 +54,9 @@ npm run build
 | 개념 태깅 실행 (현재 Q.md) | `Q###.md` + `subject.yaml` → gemma2 → frontmatter `primary_concept`/`concepts` + 허브 노드 | `Ctrl+Shift+T` |
 | 회차 생성 (현재 워크스페이스) | `subject.yaml` 분포 + `00_참고자료/` 팩 → gemma2로 N문제 생성 + 5-gram 저작권 검사 | — |
 | 회차 export (활성 파일이 속한 회차) | `05_rounds/{roundId}/` → `06_output/{roundId}/printable.md` + 답안지 | `Ctrl+Shift+E` |
+| 워크스페이스 진단 (현재 cert) | 단계별 진척 통계 + 다음 단계 추천 → `_review/workspace_status.md` | — |
+| subject.yaml 검증 | 필수 필드/중복/분포 검사 → `_review/subject_yaml_check.md` | — |
+| 회차 검증 리포트 (활성 파일이 속한 회차) | 과목·난이도·개념 분포 + 저작권 통과율 → `06_output/{roundId}/audit.md` | — |
 | Ollama 연결 확인 | `/api/tags` 확인, 설치 모델 목록 표시 | — |
 
 ## 탐색기 우클릭 메뉴
@@ -72,6 +75,9 @@ npm run build
 | cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 PDF 가져오기** | 파일 선택창으로 PDF 고르기 |
 | cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 회차 생성** | 회차 ID·문제수·임계값 모달 |
 | `05_rounds/{roundId}/` 폴더 우클릭 | **Exam Workbook: 이 회차 export** | 인쇄용 통합 markdown + 답안지 생성 |
+| `05_rounds/{roundId}/` 폴더 우클릭 | **Exam Workbook: 이 회차 검증 리포트** | 과목·난이도·개념·저작권 감사 |
+| cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스 진단** | 단계별 진척 + 다음 단계 추천 |
+| `subject.yaml` 우클릭 | **Exam Workbook: 이 subject.yaml 검증** | 화이트리스트·분포·필수필드 검사 |
 
 cert 루트 판별은 해당 폴더 안에 `00_시험개요.md` / `subject.yaml` / `01_원본` / `05_rounds` 중 하나가 있는지로 자동 추정합니다.
 
@@ -212,6 +218,7 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 - [x] v0.3.0 — **M4 신규 문제 생성** (gemma2:9b) + 분포 기반 슬롯 플랜 + 참고자료 팩 + 5-gram 저작권 검사
 - [x] v0.4.0 — **M5 회차 export** (printable.md + answers_with_explanations.md, 외부 hwpx/pptx 변환 안내)
 - [x] v0.5.0 — **배치 OCR** (`01_원본/{sourceId}/` 또는 `pages/` 폴더 우클릭, 기존 raw 자동 스킵)
+- [x] v0.6.0 — **진단·검증 도구** (워크스페이스 진단 / subject.yaml 검증 / 회차 검증 리포트)
 - [ ] (옵션) Tesseract fallback — vision 신뢰도 < 임계 시 자동 전환
 - [ ] v0.5 — M4 신규 문제 생성 + n-gram 중복 검사
 - [ ] v0.6 — M5 회차 조립, hwpx/pptx 내보내기
@@ -258,6 +265,10 @@ exam-workbook-builder/
     │   ├── tagSource.ts       # M3: 03_structured/{sourceId} 일괄
     │   ├── generateRound.ts   # M4: 회차 생성 (모달 + 파이프라인)
     │   └── exportRound.ts     # M5: 인쇄용 markdown export
+    ├── audit/
+    │   ├── workspaceStatus.ts # cert별 단계별 통계 + 다음 단계 추천
+    │   ├── validateSubject.ts # subject.yaml 검증 (필수·중복·분포)
+    │   └── auditRound.ts      # 회차 검증 (분포·개념·저작권)
     ├── structure/
     │   ├── parseRaw.ts        # raw.md frontmatter/본문 파싱
     │   ├── parseModel.ts      # mistral 응답 → ParsedQuestion[]
