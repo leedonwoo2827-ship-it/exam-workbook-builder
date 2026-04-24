@@ -14,7 +14,7 @@
 4. **M4 · 신규 생성** — 개념 조합 + `00_참고자료/`의 근거 자료 기반으로 원본 비재사용 문제 생성 (n-gram 중복 검사)
 5. **M5 · 출력** — 회차별 모의고사 조립, 필요 시 hwpx/pptx로 내보내기
 
-현재 버전 `0.5.0`에서 **M1~M5 전 파이프라인이 동작**합니다 (워크스페이스 초기화 · PDF import · 페이지/폴더 일괄 OCR · 구조화 · 개념 태깅 · 회차 생성 · 인쇄 export).
+현재 버전 `1.0.0`. **M1~M5 전 파이프라인 + 진단/검증 도구 + 카탈로그 자동 검증**까지 안정 채널에 진입했습니다. 변경 이력은 [CHANGELOG.md](CHANGELOG.md) 참고.
 
 ## 설치
 
@@ -28,17 +28,27 @@
   ollama pull gemma2:9b      # 개념 태깅/문제 생성
   ```
 
-### 빌드 & 배포
+### A. BRAT으로 설치 (가장 간편)
+1. Obsidian 커뮤니티 플러그인에서 **BRAT (Beta Reviewers Auto-update Tool)** 설치·활성화
+2. `Ctrl+P` → `BRAT: Plugins: Add a beta plugin`
+3. 입력: `leedonwoo2827-ship-it/exam-workbook-builder`
+4. 설정 → 커뮤니티 플러그인에서 **Exam Workbook Builder** 활성화
+
+이후 신규 릴리즈가 올라오면 BRAT가 자동 업데이트해줍니다.
+
+### B. 수동 설치 (Releases zip 사용)
+1. [Releases](https://github.com/leedonwoo2827-ship-it/exam-workbook-builder/releases) 페이지에서 최신 release의 `main.js` · `manifest.json` · `styles.css` 다운로드
+2. `<vault>/.obsidian/plugins/exam-workbook-builder/`에 세 파일을 넣고 Obsidian 재시작
+3. 설정 → 커뮤니티 플러그인에서 활성화
+
+### C. 직접 빌드
 ```bash
 git clone https://github.com/leedonwoo2827-ship-it/exam-workbook-builder
 cd exam-workbook-builder
 npm install
 npm run build
 ```
-
-생성된 `main.js`, `manifest.json`, `styles.css` 세 파일을 Obsidian vault의
-`<vault>/.obsidian/plugins/exam-workbook-builder/`에 복사한 뒤
-설정 → 커뮤니티 플러그인에서 활성화.
+생성된 `main.js`, `manifest.json`, `styles.css`를 vault의 `.obsidian/plugins/exam-workbook-builder/`에 복사.
 
 ## 명령어
 
