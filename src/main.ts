@@ -21,6 +21,7 @@ import {
   RoundFormInput,
 } from "./commands/generateRound";
 import { exportRound, isRoundFolder } from "./commands/exportRound";
+import { isOcrTargetFolder, isUnderOriginal, ocrFolder } from "./commands/ocrFolder";
 import { listModels } from "./ollama";
 import { notify } from "./utils";
 
@@ -175,6 +176,14 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setTitle("Exam Workbook: 이 source 일괄 구조화")
             .setIcon("layers")
             .onClick(() => void this.runStructureSource(file))
+        );
+      }
+      if (isUnderOriginal(file) && isOcrTargetFolder(file)) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 폴더의 페이지 일괄 OCR")
+            .setIcon("scan-line")
+            .onClick(() => void this.runOcrFolder(file))
         );
       }
       if (isStructuredSourceFolder(file)) {
@@ -473,6 +482,35 @@ export default class ExamWorkbookPlugin extends Plugin {
     } catch (e) {
       notice.hide();
       notify(`Export 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runOcrFolder(folder: TFolder): Promise<void> {
+    const notice = new Notice(`OCR 일괄: ${folder.path} (0/?)`, 0);
+    try {
+      const summary = await ocrFolder(this.app, {
+        folder,
+        ollamaUrl: this.settings.ollamaUrl,
+        visionModel: this.settings.visionModel,
+        timeoutMs: this.settings.requestTimeoutMs,
+        confidenceThreshold: this.settings.ocrConfidenceThreshold,
+        onProgress: (done, total, name) => {
+          notice.setMessage(`OCR 일괄: ${name} (${done}/${total})`);
+        },
+      });
+      notice.hide();
+      if (summary.failed.length) {
+        // eslint-disable-next-line no-console
+        console.warn("[Exam Workbook] 일괄 OCR 실패 목록:", summary.failed);
+      }
+      const failNote = summary.failed.length ? ` · 실패 ${summary.failed.length}건 (콘솔)` : "";
+      notify(
+        `일괄 OCR 완료 · 처리 ${summary.processed}/${summary.totalPages} · 스킵 ${summary.skipped}${failNote}`,
+        9000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`일괄 OCR 실패: ${(e as Error).message}`, 8000);
     }
   }
 

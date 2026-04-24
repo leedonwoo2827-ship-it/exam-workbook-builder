@@ -3,7 +3,7 @@
 로컬 Ollama + Obsidian vault 기반 **자격증 문제집 제작 파이프라인** Obsidian 플러그인.
 교재 PDF를 OCR하고, 표준 포맷으로 구조화한 뒤, 개념 태깅과 **저작권 안전한 신규 문제 생성**까지 한 vault 안에서 처리합니다.
 
-> 특정 자격증에 묶이지 않는 범용 프레임워크입니다. SQLD · 컴활 · 정보처리기사 등 어떤 객관식 자격증에도 적용할 수 있도록 설계되었습니다.
+> 특정 자격증에 묶이지 않는 범용 프레임워크입니다. SQLD · 컴활 · 정보처리기사 · TOPIK 등 어떤 객관식 자격증에도 적용할 수 있도록 설계되었습니다.
 
 ## Pipeline (M1~M5)
 
@@ -13,7 +13,7 @@
 4. **M4 · 신규 생성** — 개념 조합 + `00_참고자료/`의 근거 자료 기반으로 원본 비재사용 문제 생성 (n-gram 중복 검사)
 5. **M5 · 출력** — 회차별 모의고사 조립, 필요 시 hwpx/pptx로 내보내기
 
-현재 버전 `0.1.0`은 **M1의 핵심 단계**(워크스페이스 초기화 · PDF import · 페이지별 OCR)를 제공합니다. M2~M5는 로드맵 참조.
+현재 버전 `0.5.0`에서 **M1~M5 전 파이프라인이 동작**합니다 (워크스페이스 초기화 · PDF import · 페이지/폴더 일괄 OCR · 구조화 · 개념 태깅 · 회차 생성 · 인쇄 export).
 
 ## 설치
 
@@ -63,6 +63,7 @@ npm run build
 |------|------|------|
 | `.pdf` 파일 우클릭 | **Exam Workbook: PDF 가져오기** | 해당 PDF를 속한 cert 워크스페이스에 페이지 분할 |
 | `.png` (pages/ 하위) 우클릭 | **Exam Workbook: 이 페이지 OCR** | 페이지 이미지 하나만 OCR 실행 |
+| `01_원본/{sourceId}/` 또는 `pages/` 폴더 우클릭 | **Exam Workbook: 이 폴더의 페이지 일괄 OCR** | 폴더 내 모든 png 일괄 OCR (이미 raw가 있으면 스킵) |
 | `.raw.md` 우클릭 | **Exam Workbook: 이 raw 구조화** | mistral로 표준 Q 포맷 변환 + 자동 검증 |
 | `02_raw/{sourceId}/` 폴더 우클릭 | **Exam Workbook: 이 source 일괄 구조화** | 폴더 내 모든 `.raw.md` 일괄 처리 |
 | `Q###.md` 우클릭 | **Exam Workbook: 이 문제 태깅** | gemma2로 개념 태그 부여 + 허브 노드 갱신 |
@@ -209,7 +210,8 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 - [x] v0.2.0 — **M3 개념 태깅** (gemma2:9b) + 허브 노드 자동 생성 + candidate 분리 + Q/source 일괄
 - [x] v0.3.0 — **M4 신규 문제 생성** (gemma2:9b) + 분포 기반 슬롯 플랜 + 참고자료 팩 + 5-gram 저작권 검사
 - [x] v0.4.0 — **M5 회차 export** (printable.md + answers_with_explanations.md, 외부 hwpx/pptx 변환 안내)
-- [ ] v0.5.0 — 배치 OCR (디렉토리 단위), Tesseract fallback
+- [x] v0.5.0 — **배치 OCR** (`01_원본/{sourceId}/` 또는 `pages/` 폴더 우클릭, 기존 raw 자동 스킵)
+- [ ] (옵션) Tesseract fallback — vision 신뢰도 < 임계 시 자동 전환
 - [ ] v0.5 — M4 신규 문제 생성 + n-gram 중복 검사
 - [ ] v0.6 — M5 회차 조립, hwpx/pptx 내보내기
 
@@ -248,6 +250,7 @@ exam-workbook-builder/
     │   ├── initWorkspace.ts
     │   ├── importPdf.ts
     │   ├── ocrPage.ts
+    │   ├── ocrFolder.ts       # v0.5: 01_원본/{sourceId}/ 또는 pages/ 일괄 OCR
     │   ├── structureRaw.ts    # M2: 단일 raw → Q###.md
     │   ├── structureSource.ts # M2: source 폴더 일괄
     │   ├── tagQuestion.ts     # M3: 단일 Q 개념 태깅
