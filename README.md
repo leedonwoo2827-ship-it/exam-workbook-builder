@@ -50,6 +50,7 @@ npm run build
 | PDF 가져오기 (현재 워크스페이스에 페이지 분할) | 시스템 파일 선택창에서 PDF 고르기 | — |
 | OCR 실행 (현재 페이지 이미지) | 활성 png 페이지 → Ollama vision → raw.md | `Ctrl+Shift+O` |
 | 구조화 실행 (현재 raw.md) | `.raw.md` → mistral → 표준 `Q###.md` (검증 포함) | `Ctrl+Shift+S` |
+| 개념 태깅 실행 (현재 Q.md) | `Q###.md` + `subject.yaml` → gemma2 → frontmatter `primary_concept`/`concepts` + 허브 노드 | `Ctrl+Shift+T` |
 | Ollama 연결 확인 | `/api/tags` 확인, 설치 모델 목록 표시 | — |
 
 ## 탐색기 우클릭 메뉴
@@ -62,6 +63,8 @@ npm run build
 | `.png` (pages/ 하위) 우클릭 | **Exam Workbook: 이 페이지 OCR** | 페이지 이미지 하나만 OCR 실행 |
 | `.raw.md` 우클릭 | **Exam Workbook: 이 raw 구조화** | mistral로 표준 Q 포맷 변환 + 자동 검증 |
 | `02_raw/{sourceId}/` 폴더 우클릭 | **Exam Workbook: 이 source 일괄 구조화** | 폴더 내 모든 `.raw.md` 일괄 처리 |
+| `Q###.md` 우클릭 | **Exam Workbook: 이 문제 태깅** | gemma2로 개념 태그 부여 + 허브 노드 갱신 |
+| `03_structured/{sourceId}/` 폴더 우클릭 | **Exam Workbook: 이 source 일괄 태깅** | 폴더 내 모든 `Q###.md` 일괄 (이미 태깅된 건 스킵) |
 | cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 PDF 가져오기** | 파일 선택창으로 PDF 고르기 |
 
 cert 루트 판별은 해당 폴더 안에 `00_시험개요.md` / `subject.yaml` / `01_원본` / `05_rounds` 중 하나가 있는지로 자동 추정합니다.
@@ -128,7 +131,17 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 
 폴더 일괄: `02_raw/{sourceId}/` 폴더를 우클릭하면 그 폴더 내 모든 `.raw.md`를 순서대로 처리합니다.
 
-### 5. Ollama 연결 확인
+### 5. 개념 태깅 (M3)
+**선행 조건**: `subject.yaml`의 `subjects[].topics[].concepts`를 채워두어야 합니다.
+
+`Q###.md`를 활성으로 두고 명령어 팔레트 → **개념 태깅 실행**.
+- `gemma2:9b`가 화이트리스트 내에서 **1~3개 개념**을 선택하고 `primary_concept` + `concept_rationale`을 frontmatter에 추가
+- 화이트리스트에 없는 개념은 `candidate:신규개념` 형태로 제안 (사람 승인 전 별도 폴더 `04_concepts/_candidates/`로)
+- 각 개념마다 `04_concepts/{개념}.md` 허브 노드를 보장(없으면 템플릿 생성), `## 이 개념을 다루는 문제` 섹션에 `- [[Q###]]` 멱등 추가
+
+폴더 일괄: `03_structured/{sourceId}/`를 우클릭하면 폴더 내 모든 `Q###.md`를 일괄 태깅합니다 (이미 `primary_concept` 있는 파일은 스킵).
+
+### 6. Ollama 연결 확인
 **Ollama 연결 확인** 명령으로 `GET /api/tags`를 호출해 설치된 모델 목록을 확인할 수 있습니다.
 
 ## 설정
@@ -157,8 +170,8 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 - [x] v0.1 — 워크스페이스 초기화, PDF import(페이지 분할), 페이지별 OCR
 - [x] v0.1.1 — 탐색기 우클릭 메뉴 (PDF/PNG/cert 폴더), 활성 PDF 명령어
 - [x] v0.1.2 — **M2 구조화** (mistral:7b) + 자동 검증 + raw/source 일괄 우클릭
-- [ ] v0.2 — 배치 OCR (디렉토리 단위), Tesseract fallback
-- [ ] v0.4 — M3 개념 태깅 + 개념 허브 자동 생성
+- [x] v0.2.0 — **M3 개념 태깅** (gemma2:9b) + 허브 노드 자동 생성 + candidate 분리 + Q/source 일괄
+- [ ] v0.2.1 — 배치 OCR (디렉토리 단위), Tesseract fallback
 - [ ] v0.5 — M4 신규 문제 생성 + n-gram 중복 검사
 - [ ] v0.6 — M5 회차 조립, hwpx/pptx 내보내기
 
@@ -198,11 +211,18 @@ exam-workbook-builder/
     │   ├── importPdf.ts
     │   ├── ocrPage.ts
     │   ├── structureRaw.ts    # M2: 단일 raw → Q###.md
-    │   └── structureSource.ts # M2: source 폴더 일괄
-    └── structure/
-        ├── parseRaw.ts        # raw.md frontmatter/본문 파싱
-        ├── parseModel.ts      # mistral 응답 → ParsedQuestion[]
-        └── validate.ts        # 선택지/정답/해설 검증
+    │   ├── structureSource.ts # M2: source 폴더 일괄
+    │   ├── tagQuestion.ts     # M3: 단일 Q 개념 태깅
+    │   └── tagSource.ts       # M3: 03_structured/{sourceId} 일괄
+    ├── structure/
+    │   ├── parseRaw.ts        # raw.md frontmatter/본문 파싱
+    │   ├── parseModel.ts      # mistral 응답 → ParsedQuestion[]
+    │   └── validate.ts        # 선택지/정답/해설 검증
+    └── concepts/
+        ├── parseSubjectYaml.ts  # subject.yaml → SubjectConfig
+        ├── parseTagResponse.ts  # gemma2 JSON → concepts/primary
+        ├── frontmatter.ts       # frontmatter split/merge/join
+        └── conceptHub.ts        # 04_concepts/{개념}.md 허브 upsert
 ```
 
 ## 기여

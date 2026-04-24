@@ -8,6 +8,7 @@ export interface OllamaGenerateRequest {
   images?: string[];
   temperature?: number;
   timeoutMs?: number;
+  format?: "json";
 }
 
 export async function listModels(url: string): Promise<string[]> {
@@ -27,6 +28,7 @@ export async function generateText(req: OllamaGenerateRequest): Promise<string> 
     prompt: req.prompt,
     system: req.system,
     images: req.images,
+    format: req.format,
     stream: false,
     options: {
       temperature: req.temperature ?? 0.4,

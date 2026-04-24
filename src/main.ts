@@ -13,6 +13,8 @@ import { importPdf, pickPdfFile, readVaultPdf } from "./commands/importPdf";
 import { ocrPage } from "./commands/ocrPage";
 import { structureRaw } from "./commands/structureRaw";
 import { isRawSourceFolder, structureSource } from "./commands/structureSource";
+import { isStructuredSourceFolder, tagQuestion } from "./commands/tagQuestion";
+import { tagSource } from "./commands/tagSource";
 import { listModels } from "./ollama";
 import { notify } from "./utils";
 
@@ -68,6 +70,17 @@ export default class ExamWorkbookPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "tag-current-question",
+      name: "개념 태깅 실행 (현재 Q.md)",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        const ok = !!file && /^Q\d{3,}\.md$/i.test(file.name);
+        if (!checking && ok && file) void this.runTagQuestion(file);
+        return ok;
+      },
+    });
+
+    this.addCommand({
       id: "check-ollama",
       name: "Ollama 연결 확인",
       callback: () => this.runCheckOllama(),
@@ -106,6 +119,13 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setIcon("list-ordered")
             .onClick(() => void this.runStructureRaw(file))
         );
+      } else if (/^Q\d{3,}\.md$/i.test(file.name)) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 문제 태깅")
+            .setIcon("tag")
+            .onClick(() => void this.runTagQuestion(file))
+        );
       }
       return;
     }
@@ -125,6 +145,14 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setTitle("Exam Workbook: 이 source 일괄 구조화")
             .setIcon("layers")
             .onClick(() => void this.runStructureSource(file))
+        );
+      }
+      if (isStructuredSourceFolder(file)) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 source 일괄 태깅")
+            .setIcon("tags")
+            .onClick(() => void this.runTagSource(file))
         );
       }
     }
@@ -274,6 +302,52 @@ export default class ExamWorkbookPlugin extends Plugin {
     } catch (e) {
       notice.hide();
       notify(`일괄 구조화 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runTagQuestion(file: TFile): Promise<void> {
+    const notice = new Notice(`개념 태깅 중: ${file.name}`, 0);
+    try {
+      const r = await tagQuestion(this.app, {
+        questionFile: file,
+        ollamaUrl: this.settings.ollamaUrl,
+        reasoningModel: this.settings.reasoningModel,
+        timeoutMs: this.settings.requestTimeoutMs,
+      });
+      notice.hide();
+      const candNote = r.candidateCount > 0 ? ` · 신규제안 ${r.candidateCount}` : "";
+      notify(`태깅 완료 · ${r.qid} → ${r.primaryConcept} (${r.concepts.length}개${candNote})`, 7000);
+    } catch (e) {
+      notice.hide();
+      notify(`태깅 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runTagSource(folder: TFolder): Promise<void> {
+    const notice = new Notice(`태깅 일괄 처리: ${folder.path} (0/?)`, 0);
+    try {
+      const summary = await tagSource(this.app, {
+        sourceFolder: folder,
+        ollamaUrl: this.settings.ollamaUrl,
+        reasoningModel: this.settings.reasoningModel,
+        timeoutMs: this.settings.requestTimeoutMs,
+        onProgress: (done, total, name) => {
+          notice.setMessage(`태깅 일괄 처리: ${name} (${done}/${total})`);
+        },
+      });
+      notice.hide();
+      if (summary.failed.length) {
+        // eslint-disable-next-line no-console
+        console.warn("[Exam Workbook] 일괄 태깅 실패 목록:", summary.failed);
+      }
+      const failedNote = summary.failed.length ? ` · 실패 ${summary.failed.length}건 (콘솔)` : "";
+      notify(
+        `일괄 태깅 완료 · 처리 ${summary.processed}/${summary.totalFiles} · 스킵 ${summary.skipped} · 신규제안 ${summary.candidateConcepts}${failedNote}`,
+        9000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`일괄 태깅 실패: ${(e as Error).message}`, 8000);
     }
   }
 
