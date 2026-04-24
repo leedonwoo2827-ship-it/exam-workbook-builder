@@ -49,6 +49,7 @@ npm run build
 | PDF 가져오기 (현재 활성 PDF) | vault 내부의 활성 PDF를 페이지 분할 | `Ctrl+Shift+I` |
 | PDF 가져오기 (현재 워크스페이스에 페이지 분할) | 시스템 파일 선택창에서 PDF 고르기 | — |
 | OCR 실행 (현재 페이지 이미지) | 활성 png 페이지 → Ollama vision → raw.md | `Ctrl+Shift+O` |
+| 구조화 실행 (현재 raw.md) | `.raw.md` → mistral → 표준 `Q###.md` (검증 포함) | `Ctrl+Shift+S` |
 | Ollama 연결 확인 | `/api/tags` 확인, 설치 모델 목록 표시 | — |
 
 ## 탐색기 우클릭 메뉴
@@ -59,6 +60,8 @@ npm run build
 |------|------|------|
 | `.pdf` 파일 우클릭 | **Exam Workbook: PDF 가져오기** | 해당 PDF를 속한 cert 워크스페이스에 페이지 분할 |
 | `.png` (pages/ 하위) 우클릭 | **Exam Workbook: 이 페이지 OCR** | 페이지 이미지 하나만 OCR 실행 |
+| `.raw.md` 우클릭 | **Exam Workbook: 이 raw 구조화** | mistral로 표준 Q 포맷 변환 + 자동 검증 |
+| `02_raw/{sourceId}/` 폴더 우클릭 | **Exam Workbook: 이 source 일괄 구조화** | 폴더 내 모든 `.raw.md` 일괄 처리 |
 | cert 루트 폴더 우클릭 | **Exam Workbook: 이 워크스페이스에 PDF 가져오기** | 파일 선택창으로 PDF 고르기 |
 
 cert 루트 판별은 해당 폴더 안에 `00_시험개요.md` / `subject.yaml` / `01_원본` / `05_rounds` 중 하나가 있는지로 자동 추정합니다.
@@ -113,7 +116,19 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 `01_원본/.../pages/p0001.png` 같은 페이지 이미지를 연 상태에서 명령어 팔레트 → **OCR 실행**.
 결과는 `02_raw/{sourceId}/p0001.raw.md`로 저장되며, 프롬프트는 `assets/prompts/02_ocr_vision.md` 기반입니다.
 
-### 4. Ollama 연결 확인
+### 4. 구조화 실행 (M2)
+`02_raw/{sourceId}/p0001.raw.md`를 활성 상태로 두고 명령어 팔레트 → **구조화 실행**.
+구조화 모델(`mistral:7b`)이 raw 본문을 `### Q{n}` / `#### 1)~4)` / `##### 정답:` / `###### 해설:` 표준 포맷으로 변환하고,
+한 페이지에서 추출된 각 문제는 `03_structured/{sourceId}/Q###.md`로 저장됩니다 (qid는 자동 채번).
+
+자동 검증:
+- 선택지 4개 / 정답 1~4 범위 / 해설 30자 이상 / 발문 비어있지 않음
+- 검증 실패한 문제는 `_review/structure_errors.md`에 누적되어 수작업 보강 큐로 들어감
+- 같은 페이지에 같은 발문(앞 30자 일치) 문제가 이미 있으면 기본 스킵 (멱등)
+
+폴더 일괄: `02_raw/{sourceId}/` 폴더를 우클릭하면 그 폴더 내 모든 `.raw.md`를 순서대로 처리합니다.
+
+### 5. Ollama 연결 확인
 **Ollama 연결 확인** 명령으로 `GET /api/tags`를 호출해 설치된 모델 목록을 확인할 수 있습니다.
 
 ## 설정
@@ -141,8 +156,8 @@ cert 워크스페이스 내부 파일을 **활성 상태로 둔 채** 명령어 
 
 - [x] v0.1 — 워크스페이스 초기화, PDF import(페이지 분할), 페이지별 OCR
 - [x] v0.1.1 — 탐색기 우클릭 메뉴 (PDF/PNG/cert 폴더), 활성 PDF 명령어
+- [x] v0.1.2 — **M2 구조화** (mistral:7b) + 자동 검증 + raw/source 일괄 우클릭
 - [ ] v0.2 — 배치 OCR (디렉토리 단위), Tesseract fallback
-- [ ] v0.3 — M2 구조화 (mistral:7b) + 자동 검증
 - [ ] v0.4 — M3 개념 태깅 + 개념 허브 자동 생성
 - [ ] v0.5 — M4 신규 문제 생성 + n-gram 중복 검사
 - [ ] v0.6 — M5 회차 조립, hwpx/pptx 내보내기
@@ -178,10 +193,16 @@ exam-workbook-builder/
     ├── types.ts
     ├── utils.ts
     ├── modules.d.ts           # *.md 타입 선언
-    └── commands/
-        ├── initWorkspace.ts
-        ├── importPdf.ts
-        └── ocrPage.ts
+    ├── commands/
+    │   ├── initWorkspace.ts
+    │   ├── importPdf.ts
+    │   ├── ocrPage.ts
+    │   ├── structureRaw.ts    # M2: 단일 raw → Q###.md
+    │   └── structureSource.ts # M2: source 폴더 일괄
+    └── structure/
+        ├── parseRaw.ts        # raw.md frontmatter/본문 파싱
+        ├── parseModel.ts      # mistral 응답 → ParsedQuestion[]
+        └── validate.ts        # 선택지/정답/해설 검증
 ```
 
 ## 기여

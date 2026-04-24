@@ -11,6 +11,8 @@ import {
 } from "./commands/initWorkspace";
 import { importPdf, pickPdfFile, readVaultPdf } from "./commands/importPdf";
 import { ocrPage } from "./commands/ocrPage";
+import { structureRaw } from "./commands/structureRaw";
+import { isRawSourceFolder, structureSource } from "./commands/structureSource";
 import { listModels } from "./ollama";
 import { notify } from "./utils";
 
@@ -55,6 +57,17 @@ export default class ExamWorkbookPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "structure-current-raw",
+      name: "구조화 실행 (현재 raw.md)",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        const ok = !!file && file.name.endsWith(".raw.md");
+        if (!checking && ok && file) void this.runStructureRaw(file);
+        return ok;
+      },
+    });
+
+    this.addCommand({
       id: "check-ollama",
       name: "Ollama 연결 확인",
       callback: () => this.runCheckOllama(),
@@ -86,6 +99,13 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setIcon("scan")
             .onClick(() => void this.runOcr(file))
         );
+      } else if (file.name.endsWith(".raw.md")) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 raw 구조화")
+            .setIcon("list-ordered")
+            .onClick(() => void this.runStructureRaw(file))
+        );
       }
       return;
     }
@@ -97,6 +117,14 @@ export default class ExamWorkbookPlugin extends Plugin {
             .setTitle("Exam Workbook: 이 워크스페이스에 PDF 가져오기")
             .setIcon("file-plus")
             .onClick(() => void this.runImportPdfFor(file.path))
+        );
+      }
+      if (isRawSourceFolder(file)) {
+        menu.addItem((item) =>
+          item
+            .setTitle("Exam Workbook: 이 source 일괄 구조화")
+            .setIcon("layers")
+            .onClick(() => void this.runStructureSource(file))
         );
       }
     }
@@ -196,6 +224,56 @@ export default class ExamWorkbookPlugin extends Plugin {
     } catch (e) {
       notice.hide();
       notify(`임포트 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runStructureRaw(file: TFile): Promise<void> {
+    const notice = new Notice(`구조화 중: ${file.name}`, 0);
+    try {
+      const r = await structureRaw(this.app, {
+        rawFile: file,
+        ollamaUrl: this.settings.ollamaUrl,
+        structureModel: this.settings.structureModel,
+        timeoutMs: this.settings.requestTimeoutMs,
+      });
+      notice.hide();
+      notify(
+        `구조화 완료 · ${file.name}: ${r.written.length} 작성 / ${r.skippedExisting} 스킵 / ${r.invalid} 검증실패 (총 추출 ${r.total})`,
+        7000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`구조화 실패: ${(e as Error).message}`, 8000);
+    }
+  }
+
+  private async runStructureSource(folder: TFolder): Promise<void> {
+    const notice = new Notice(`구조화 일괄 처리: ${folder.path} (0/?)`, 0);
+    try {
+      const summary = await structureSource(this.app, {
+        sourceFolder: folder,
+        ollamaUrl: this.settings.ollamaUrl,
+        structureModel: this.settings.structureModel,
+        timeoutMs: this.settings.requestTimeoutMs,
+        onProgress: (done, total, name) => {
+          notice.setMessage(`구조화 일괄 처리: ${name} (${done}/${total})`);
+        },
+      });
+      notice.hide();
+      const failedNote = summary.failedFiles.length
+        ? ` · 실패 ${summary.failedFiles.length}건 (콘솔 확인)`
+        : "";
+      if (summary.failedFiles.length) {
+        // eslint-disable-next-line no-console
+        console.warn("[Exam Workbook] 일괄 구조화 실패 목록:", summary.failedFiles);
+      }
+      notify(
+        `일괄 구조화 완료 · ${summary.processedFiles}/${summary.totalFiles} 파일 · ${summary.totalQuestionsWritten} 작성 / ${summary.totalSkipped} 스킵 / ${summary.totalInvalid} 검증실패${failedNote}`,
+        9000
+      );
+    } catch (e) {
+      notice.hide();
+      notify(`일괄 구조화 실패: ${(e as Error).message}`, 8000);
     }
   }
 
